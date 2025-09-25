@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rail Traffic AI • Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            rail: { blue: '#2563eb', green: '#10b981', red: '#ef4444', amber: '#f59e0b' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="dark bg-neutral-900 text-neutral-100 min-h-screen">
+  <!-- Header -->
+  <header class="sticky top-0 z-30 bg-neutral-950/80 backdrop-blur border-b border-neutral-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="h-16 flex items-center justify-between">
+        <!-- Brand -->
+        <div class="flex items-center gap-3">
+          <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-rail.blue/20 to-rail.green/20 text-rail.blue ring-1 ring-rail.blue/20">🚂</span>
+          <div class="leading-tight">
+            <div class="font-semibold tracking-wide">Rail Traffic AI</div>
+            <div class="text-[11px] text-neutral-400">Realtime Ops • Scheduling</div>
+          </div>
+        </div>
+
+        <!-- Center Tabs -->
+        <nav class="hidden md:flex items-center gap-1 rounded-xl border border-neutral-800 bg-neutral-900/70 p-1">
+          <button data-tab="dashboard" class="nav-tab px-3 py-1.5 text-xs rounded-lg text-neutral-300 hover:bg-neutral-800">Dashboard</button>
+          <button data-tab="live" class="nav-tab px-3 py-1.5 text-xs rounded-lg text-neutral-300 hover:bg-neutral-800">Live</button>
+          <button data-tab="optimizer" class="nav-tab px-3 py-1.5 text-xs rounded-lg text-neutral-300 hover:bg-neutral-800">Optimizer</button>
+          <a href="/docs" class="px-3 py-1.5 text-xs rounded-lg text-rail.blue bg-rail.blue/10 border border-rail.blue/30 hover:bg-rail.blue/20">Docs</a>
+        </nav>
+
+        <!-- Actions -->
+        <div class="flex items-center gap-2">
+          <div class="hidden sm:flex items-center gap-2">
+            <div class="relative">
+              <input id="quickSearch" placeholder="Search train #" class="w-36 md:w-48 rounded-lg bg-neutral-900 border border-neutral-800 px-3 py-1.5 text-xs focus:outline-none focus:ring focus:ring-rail.blue/30" />
+              <span class="pointer-events-none absolute right-2 top-1.5 text-[11px] text-neutral-500">⌕</span>
+            </div>
+            <select id="quickCount" class="rounded-lg bg-neutral-900 border border-neutral-800 px-2 py-1.5 text-xs focus:outline-none">
+              <option value="40">40</option>
+              <option value="80" selected>80</option>
+              <option value="120">120</option>
+            </select>
+          </div>
+          <button id="themeBtn" class="px-3 py-1.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 text-xs">🌙</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <!-- KPIs -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+        <div class="text-xs text-neutral-400">Active Trains</div>
+        <div id="kpiActive" class="mt-2 text-2xl font-semibold">--</div>
+      </div>
+      <div class="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+        <div class="text-xs text-neutral-400">On-Time %</div>
+        <div id="kpiOnTime" class="mt-2 text-2xl font-semibold">--%</div>
+      </div>
+      <div class="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+        <div class="text-xs text-neutral-400">Avg Delay</div>
+        <div id="kpiDelay" class="mt-2 text-2xl font-semibold">-- min</div>
+      </div>
+      <div class="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+        <div class="text-xs text-neutral-400">Last Updated</div>
+        <div id="kpiUpdated" class="mt-2 text-sm">--:--:--</div>
+      </div>
+    </section>
+
+    <!-- Delay Charts -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold">Average Delay (last 20 updates)</h2>
+          <span class="text-xs text-neutral-400">minutes</span>
+        </div>
+        <canvas id="delayLine" height="140"></canvas>
+      </div>
+      <div class="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold">Delay Distribution</h2>
+          <span class="text-xs text-neutral-400">trains per bucket</span>
+        </div>
+        <canvas id="delayBar" height="140"></canvas>
+      </div>
+    </section>
+
+    <!-- Live Status Table -->
+    <section class="rounded-xl border border-neutral-800 bg-neutral-900 overflow-hidden">
+      <div class="flex items-center justify-between p-4 border-b border-neutral-800">
+        <h2 class="text-sm font-semibold">Live Train Status</h2>
+        <div class="flex items-center gap-2">
+          <input id="countInput" type="number" min="10" max="200" value="80" class="w-20 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs focus:outline-none focus:ring focus:ring-rail.blue/40" />
+          <button id="btnRefresh" class="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-xs border border-neutral-700">Refresh</button>
+        </div>
+      </div>
+      <div class="overflow-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-neutral-800/50 text-neutral-300">
+            <tr>
+              <th class="px-4 py-2 text-left font-medium">Train</th>
+              <th class="px-4 py-2 text-left font-medium">Name</th>
+              <th class="px-4 py-2 text-left font-medium">Status</th>
+              <th class="px-4 py-2 text-left font-medium">Delay</th>
+              <th class="px-4 py-2 text-left font-medium">Current</th>
+              <th class="px-4 py-2 text-left font-medium">Next</th>
+              <th class="px-4 py-2 text-left font-medium">Updated</th>
+            </tr>
+          </thead>
+          <tbody id="tblBody" class="divide-y divide-neutral-800"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Theme toggle
+    document.getElementById('themeBtn').addEventListener('click', () => {
+      const b = document.body; b.classList.toggle('dark');
+      document.getElementById('themeBtn').textContent = b.classList.contains('dark') ? '🌙' : '☀️';
+    });
+
+    // Nav tabs (visual only)
+    const tabs = document.querySelectorAll('.nav-tab');
+    function setActiveTab(name) {
+      tabs.forEach(t => {
+        const active = t.getAttribute('data-tab') === name;
+        t.classList.toggle('bg-neutral-800', active);
+        t.classList.toggle('text-white', active);
+        t.classList.toggle('text-neutral-300', !active);
+      });
+    }
+    tabs.forEach(t => t.addEventListener('click', () => setActiveTab(t.getAttribute('data-tab'))));
+    setActiveTab('live');
+
+    // Quick search and count wire-up
+    const quickSearch = document.getElementById('quickSearch');
+    const quickCount = document.getElementById('quickCount');
+    if (quickCount) quickCount.addEventListener('change', () => {
+      const c = document.getElementById('countInput'); if (c) { c.value = quickCount.value; }
+      const btn = document.getElementById('btnRefresh'); if (btn) btn.click();
+    });
+    if (quickSearch) quickSearch.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const val = (quickSearch.value || '').trim();
+        if (!val) return;
+        // Try focusing the matching row by train number
+        const rows = document.querySelectorAll('#tblBody tr');
+        for (const r of rows) {
+          const tn = r.querySelector('td');
+          if (tn && tn.textContent.trim() === val) {
+            r.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            r.classList.add('ring-1','ring-rail.blue/40');
+            setTimeout(() => r.classList.remove('ring-1','ring-rail.blue/40'), 1200);
+            break;
+          }
+        }
+      }
+    });
+
+    // Helpers
+    const statusPill = (s) => {
+      const map = { ON_TIME: 'bg-rail.green/20 text-rail.green', DELAYED: 'bg-rail.red/20 text-rail.red', EARLY: 'bg-rail.amber/20 text-rail.amber' };
+      const cls = map[s] || 'bg-neutral-700 text-neutral-200';
+      return `<span class="px-2 py-1 rounded text-xs ${cls}">${s}</span>`;
+    };
+
+    function updateKPIs(rows) {
+      const total = rows.length || 0;
+      const onTime = rows.filter(r => (r.status || 'ON_TIME') === 'ON_TIME').length;
+      const avgDelay = total ? Math.round(rows.reduce((s, r) => s + (r.delay_minutes || 0), 0) / total) : 0;
+      document.getElementById('kpiActive').textContent = total;
+      document.getElementById('kpiOnTime').textContent = total ? Math.round((onTime / total) * 100) + '%' : '--%';
+      document.getElementById('kpiDelay').textContent = `${avgDelay} min`;
+      document.getElementById('kpiUpdated').textContent = new Date().toLocaleTimeString();
+
+      // Update line chart
+      const t = new Date().toLocaleTimeString();
+      delayLine.data.labels.push(t);
+      delayLine.data.datasets[0].data.push(avgDelay);
+      if (delayLine.data.labels.length > 20) {
+        delayLine.data.labels.shift();
+        delayLine.data.datasets[0].data.shift();
+      }
+      delayLine.update();
+    }
+
+    async function fetchLive(count=80) {
+      try {
+        const res = await fetch(`/api/trains/live?count=${count}`);
+        if (res.ok) return await res.json();
+      } catch (_) {}
+      // fallback to basic endpoint
+      const res2 = await fetch('/api/trains/live');
+      return res2.ok ? res2.json() : [];
+    }
+
+    async function renderTable() {
+      const count = Number(document.getElementById('countInput').value || 80);
+      const tbody = document.getElementById('tblBody');
+      tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-6 text-center text-neutral-400">Loading…</td></tr>';
+      const rows = await fetchLive(count);
+      updateKPIs(rows);
+
+      // Update delay distribution bar chart
+      const buckets = [0, 5, 15, 30, 60];
+      const labels = ['0', '1-5', '6-15', '16-30', '31-60', '60+'];
+      const counts = [0, 0, 0, 0, 0, 0];
+      rows.forEach(r => {
+        const d = Number(r.delay_minutes || 0);
+        if (d === 0) counts[0]++; else if (d <= 5) counts[1]++; else if (d <= 15) counts[2]++; else if (d <= 30) counts[3]++; else if (d <= 60) counts[4]++; else counts[5]++;
+      });
+      delayBar.data.labels = labels;
+      delayBar.data.datasets[0].data = counts;
+      delayBar.update();
+      tbody.innerHTML = (rows || []).map(r => `
+        <tr class="hover:bg-neutral-800/60">
+          <td class="px-4 py-2">${r.train_number || '--'}</td>
+          <td class="px-4 py-2">${r.train_name || '--'}</td>
+          <td class="px-4 py-2">${statusPill(r.status || 'ON_TIME')}</td>
+          <td class="px-4 py-2">${(r.delay_minutes ?? 0)} min</td>
+          <td class="px-4 py-2">${r.current_station || '--'}</td>
+          <td class="px-4 py-2">${r.next_station || '--'}</td>
+          <td class="px-4 py-2 text-neutral-400">${(r.last_updated || '').toString().slice(11,19)}</td>
+        </tr>`).join('');
+    }
+
+    document.getElementById('btnRefresh').addEventListener('click', renderTable);
+    // Charts
+    const commonGrid = { color: 'rgba(63,63,70,0.4)' };
+    const commonTicks = { color: '#a1a1aa' };
+    const lineCtx = document.getElementById('delayLine').getContext('2d');
+    const delayLine = new Chart(lineCtx, {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Avg Delay', data: [], borderColor: 'rgba(59,130,246,1)', backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.25 }] },
+      options: { responsive: true, plugins: { legend: { labels: { color: '#d4d4d8' } } }, scales: { x: { ticks: commonTicks, grid: commonGrid }, y: { ticks: commonTicks, grid: commonGrid, beginAtZero: true } } }
+    });
+    const barCtx = document.getElementById('delayBar').getContext('2d');
+    const delayBar = new Chart(barCtx, {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: 'Trains', data: [], backgroundColor: 'rgba(16,185,129,0.4)', borderColor: 'rgba(16,185,129,1)' }] },
+      options: { responsive: true, plugins: { legend: { labels: { color: '#d4d4d8' } } }, scales: { x: { ticks: commonTicks, grid: commonGrid }, y: { ticks: commonTicks, grid: commonGrid, beginAtZero: true, precision: 0 } } }
+    });
+
+    renderTable();
+    setInterval(renderTable, 10000);
+  </script>
+</body>
+</html>
